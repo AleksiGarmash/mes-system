@@ -1,0 +1,12 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8081/realms/mes
+
+mes:
+  outbox:
+    poll-ms: 3600000   # в тестах Kafka нет: relay не должен опрашивать outbox
