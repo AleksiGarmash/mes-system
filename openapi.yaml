@@ -1,0 +1,592 @@
+openapi: 3.0.3
+info:
+  title: Mixing MES API
+  description: MES-система для производства смесей (литейные и металлургические материалы)
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Recipes
+  - name: Production Orders
+  - name: Checklists
+  - name: Mixing
+  - name: Quality Control
+  - name: Batches
+
+paths:
+  /api/recipes:
+    post:
+      tags: [Recipes]
+      summary: Создать рецептуру (версия 1 или следующая версия по коду)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRecipeRequest" }
+      responses:
+        "201":
+          description: Рецептура создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+    get:
+      tags: [Recipes]
+      summary: Получить все версии рецептуры по коду
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Список версий
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Recipe" }
+
+  /api/recipes/{id}:
+    get:
+      tags: [Recipes]
+      summary: Получить рецептуру по id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Рецептура
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "404": { description: Не найдено }
+
+  /api/recipes/{id}/activate:
+    post:
+      tags: [Recipes]
+      summary: Активировать версию рецептуры (архивирует предыдущую активную)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Рецептура активирована
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+
+  /api/orders:
+    post:
+      tags: [Production Orders]
+      summary: Создать производственное задание
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
+      responses:
+        "201":
+          description: Задание создано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductionOrder" }
+
+  /api/orders/{id}:
+    get:
+      tags: [Production Orders]
+      summary: Получить задание по id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Задание
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductionOrder" }
+
+  /api/orders/{id}/start:
+    post:
+      tags: [Production Orders]
+      summary: Запустить производство (создаёт партию)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Партия создана
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+
+  /api/orders/{id}/complete:
+    post:
+      tags: [Production Orders]
+      summary: Завершить производственное задание
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Задание завершено
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductionOrder" }
+
+  /api/checklists:
+    post:
+      tags: [Checklists]
+      summary: Создать чек-лист для производственного задания (перед печатью бланка)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateChecklistRequest" }
+      responses:
+        "201":
+          description: Чек-лист создан (статус NEW)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checklist" }
+
+  /api/checklists/{id}/upload:
+    post:
+      tags: [Checklists]
+      summary: Загрузить фото/скан заполненного бланка
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                uploadedBy: { type: string }
+      responses:
+        "200":
+          description: Фото сохранено (статус UPLOADED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checklist" }
+
+  /api/checklists/{id}/recognize:
+    post:
+      tags: [Checklists]
+      summary: Распознать изображение (OCR) и сверить со рецептурой
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Распознано, статус WAITING_CONFIRMATION, строки с needsReview для правки
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checklist" }
+
+  /api/checklists/{id}:
+    get:
+      tags: [Checklists]
+      summary: Получить чек-лист по id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Чек-лист
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checklist" }
+
+  /api/checklists/{id}/confirm:
+    post:
+      tags: [Checklists]
+      summary: Подтвердить чек-лист (с ручными правками ошибок OCR) — создаёт партию
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmChecklistRequest" }
+      responses:
+        "200":
+          description: Партия создана, статус PRODUCTION_COMPLETED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checklist" }
+
+  /api/checklists/{id}/reject:
+    post:
+      tags: [Checklists]
+      summary: Отклонить чек-лист (неразборчиво/некорректно — печатается заново)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectChecklistRequest" }
+      responses:
+        "200":
+          description: Статус REJECTED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Checklist" }
+
+  /api/mixing/session:
+    post:
+      tags: [Mixing]
+      summary: Получить/создать активную сессию смешивания для партии
+      parameters:
+        - in: query
+          name: batchId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: mixerId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Сессия смешивания
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MixingSession" }
+
+  /api/mixing/{id}/weigh:
+    post:
+      tags: [Mixing]
+      summary: Зафиксировать взвешивание компонента (с проверкой допуска)
+      parameters:
+        - in: path
+          name: id
+          description: id сессии смешивания
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WeighRequest" }
+      responses:
+        "200":
+          description: Взвешивание зафиксировано
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WeighingRecord" }
+        "422":
+          description: Отклонение дозировки вне допуска
+
+  /api/mixing/{id}/finish:
+    post:
+      tags: [Mixing]
+      summary: Завершить смешивание
+      parameters:
+        - in: path
+          name: id
+          description: id сессии смешивания
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Сессия завершена, партия переведена в PENDING_QC
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MixingSession" }
+
+  /api/qc/{batchId}:
+    post:
+      tags: [Quality Control]
+      summary: Зафиксировать результат проверки качества
+      parameters:
+        - in: path
+          name: batchId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QualityCheckRequest" }
+      responses:
+        "200":
+          description: Проверка зафиксирована
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QualityCheck" }
+    get:
+      tags: [Quality Control]
+      summary: Получить проверки качества по партии
+      parameters:
+        - in: path
+          name: batchId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Список проверок
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/QualityCheck" }
+
+  /api/batches/{id}:
+    get:
+      tags: [Batches]
+      summary: Получить партию по id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Партия
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+
+  /api/batches/{id}/passport:
+    get:
+      tags: [Batches]
+      summary: Получить паспорт партии
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Паспорт партии
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchPassport" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateChecklistRequest:
+      type: object
+      required: [productionOrderId]
+      properties:
+        productionOrderId: { type: string, format: uuid }
+
+    ChecklistItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        materialNameRaw: { type: string }
+        materialId: { type: string, format: uuid }
+        batchNumberRaw: { type: string }
+        rawMaterialBatchId: { type: string, format: uuid }
+        weight: { type: number }
+        confidence: { type: number }
+        needsReview: { type: boolean }
+        reviewNote: { type: string }
+        withinTolerance: { type: boolean }
+        correctedByOperator: { type: boolean }
+
+    Checklist:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productionOrderId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [NEW, UPLOADED, OCR_COMPLETE, WAITING_CONFIRMATION, CONFIRMED, REJECTED, PRODUCTION_COMPLETED]
+        imagePath: { type: string }
+        ocrConfidence: { type: number }
+        uploadedAt: { type: string, format: date-time }
+        batchId: { type: string, format: uuid }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ChecklistItem" }
+
+    ConfirmChecklistItemRequest:
+      type: object
+      required: [checklistItemId]
+      properties:
+        checklistItemId: { type: string, format: uuid }
+        materialId: { type: string, format: uuid }
+        rawMaterialBatchId: { type: string, format: uuid }
+        weight: { type: number }
+
+    ConfirmChecklistRequest:
+      type: object
+      properties:
+        operator: { type: string }
+        corrections:
+          type: array
+          items: { $ref: "#/components/schemas/ConfirmChecklistItemRequest" }
+
+    RejectChecklistRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string }
+
+    RecipeItemRequest:
+      type: object
+      required: [materialId, targetQty, tolerancePlus, toleranceMinus]
+      properties:
+        materialId: { type: string, format: uuid }
+        materialCode: { type: string }
+        targetQty: { type: number, format: decimal }
+        unit: { type: string }
+        tolerancePlus: { type: number, format: decimal, description: "% допуск сверху" }
+        toleranceMinus: { type: number, format: decimal, description: "% допуск снизу" }
+        sequenceNo: { type: integer }
+
+    CreateRecipeRequest:
+      type: object
+      required: [code, name, items]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RecipeItemRequest" }
+
+    Recipe:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [DRAFT, ACTIVE, ARCHIVED] }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RecipeItemRequest" }
+
+    CreateOrderRequest:
+      type: object
+      required: [orderNo, recipeId, plannedQty]
+      properties:
+        orderNo: { type: string }
+        recipeId: { type: string, format: uuid }
+        plannedQty: { type: number, format: decimal }
+        mixerId: { type: string, format: uuid }
+        plannedDate: { type: string, format: date-time }
+
+    ProductionOrder:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderNo: { type: string }
+        plannedQty: { type: number }
+        actualQty: { type: number }
+        status: { type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED] }
+
+    Batch:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        batchNo: { type: string }
+        qty: { type: number }
+        status: { type: string, enum: [IN_PRODUCTION, PENDING_QC, RELEASED, REJECTED, QUARANTINE] }
+        operator: { type: string }
+        producedAt: { type: string, format: date-time }
+
+    MixingSession:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        mixerId: { type: string, format: uuid }
+        status: { type: string, enum: [STARTED, WEIGHING, MIXING, FINISHED, ABORTED] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+
+    WeighRequest:
+      type: object
+      required: [recipeItemId, rawMaterialBatchId, actualQty]
+      properties:
+        recipeItemId: { type: string, format: uuid }
+        rawMaterialBatchId: { type: string, format: uuid }
+        actualQty: { type: number, format: decimal }
+
+    WeighingRecord:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        targetQty: { type: number }
+        actualQty: { type: number }
+        deviation: { type: number }
+        withinTolerance: { type: boolean }
+        weighedAt: { type: string, format: date-time }
+
+    QualityCheckRequest:
+      type: object
+      required: [parameter, measuredValue]
+      properties:
+        parameter: { type: string }
+        expectedValue: { type: number }
+        measuredValue: { type: number }
+        labTechnician: { type: string }
+
+    QualityCheck:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parameter: { type: string }
+        expectedValue: { type: number }
+        measuredValue: { type: number }
+        result: { type: string, enum: [PENDING, PASS, FAIL] }
+        labTechnician: { type: string }
+        checkedAt: { type: string, format: date-time }
+
+    BatchPassport:
+      type: object
+      properties:
+        batchNo: { type: string }
+        recipeCode: { type: string }
+        recipeVersion: { type: integer }
+        producedAt: { type: string, format: date-time }
+        mixer: { type: string }
+        operator: { type: string }
+        rawMaterialLots:
+          type: array
+          items: { type: string }
+        qcResult: { type: string, enum: [PENDING, PASS, FAIL] }
