@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <include file="db/changelog/changes/001-recipes.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/002-production-orders.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/003-batches-and-materials.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/004-mixing-and-weighing.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/005-quality-checks.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/006-indexes.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/007-checklists.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/008-checklist-qr.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/009-quality-control-checklists.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/010-real-forms-model.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/011-foundation.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/012-stock.xml" relativeToChangelogFile="false"/>
+
+</databaseChangeLog>

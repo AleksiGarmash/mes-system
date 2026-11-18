@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="007-01-create-production-checklists" author="mes">
+        <createTable tableName="production_checklists">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="production_order_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_checklists_order"
+                             references="production_orders(id)"/>
+            </column>
+            <column name="status" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="image_path" type="VARCHAR(500)"/>
+            <column name="ocr_confidence" type="DOUBLE PRECISION"/>
+            <column name="uploaded_by" type="VARCHAR(255)"/>
+            <column name="uploaded_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="confirmed_by" type="VARCHAR(255)"/>
+            <column name="confirmed_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="reject_reason" type="VARCHAR(1000)"/>
+            <column name="batch_id" type="UUID"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="production_checklists" indexName="idx_checklists_order_id">
+            <column name="production_order_id"/>
+        </createIndex>
+        <createIndex tableName="production_checklists" indexName="idx_checklists_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="007-02-create-checklist-items" author="mes">
+        <createTable tableName="checklist_items">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="checklist_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_checklist_items_checklist"
+                             references="production_checklists(id)"/>
+            </column>
+            <column name="recipe_item_id" type="UUID"/>
+            <column name="material_name_raw" type="VARCHAR(255)"/>
+            <column name="material_id" type="UUID"/>
+            <column name="batch_number_raw" type="VARCHAR(100)"/>
+            <column name="raw_material_batch_id" type="UUID"/>
+            <column name="weight" type="DECIMAL(12,3)"/>
+            <column name="ocr_confidence" type="DOUBLE PRECISION"/>
+            <column name="needs_review" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="review_note" type="VARCHAR(500)"/>
+            <column name="within_tolerance" type="BOOLEAN"/>
+            <column name="corrected_by_operator" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="checklist_items" indexName="idx_checklist_items_checklist_id">
+            <column name="checklist_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="007-03-alter-mixing-sessions-mixer-nullable" author="mes">
+        <comment>
+            В document-first потоке (чек-лист + OCR) цифровой id смесителя может быть неизвестен,
+            поэтому mixer_id в mixing_sessions становится опциональным.
+        </comment>
+        <dropNotNullConstraint tableName="mixing_sessions" columnName="mixer_id" columnDataType="UUID"/>
+    </changeSet>
+
+    <changeSet id="007-04-alter-weighing-records-recipe-item-nullable" author="mes">
+        <comment>
+            В document-first потоке компонент из чек-листа может не быть сопоставлен с
+            рецептурой автоматически (OCR не распознал / оператор не привязал) —
+            recipe_item_id становится опциональным.
+        </comment>
+        <dropNotNullConstraint tableName="weighing_records" columnName="recipe_item_id" columnDataType="UUID"/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="008-01-add-checklist-qr-fields" author="mes">
+        <comment>
+            Поддержка QR-кода задания (QR №2): фиксируем, был ли он найден и подтверждён
+            при распознавании, и сколько страниц было в исходном файле (фото/PDF).
+        </comment>
+        <addColumn tableName="production_checklists">
+            <column name="qr_verified" type="BOOLEAN"/>
+            <column name="page_count" type="INTEGER"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

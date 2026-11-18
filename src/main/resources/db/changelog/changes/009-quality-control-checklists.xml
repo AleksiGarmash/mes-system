@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="009-01-create-quality-specs" author="mes">
+        <createTable tableName="quality_specs">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="code" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="quality_specs" columnNames="code, version"
+                              constraintName="uq_quality_specs_code_version"/>
+    </changeSet>
+
+    <changeSet id="009-02-create-quality-spec-items" author="mes">
+        <createTable tableName="quality_spec_items">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="quality_spec_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_quality_spec_items_spec"
+                             references="quality_specs(id)"/>
+            </column>
+            <column name="parameter_code" type="VARCHAR(100)"/>
+            <column name="parameter_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="min_value" type="DECIMAL(12,3)"/>
+            <column name="max_value" type="DECIMAL(12,3)"/>
+            <column name="unit" type="VARCHAR(20)"/>
+            <column name="sequence_no" type="INTEGER"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="009-03-add-recipe-quality-spec-code" author="mes">
+        <comment>
+            Код QC-спецификации, применяемой к партиям этой рецептуры. Разрешается в
+            актуальную ACTIVE-версию QualitySpec в момент создания QC-чек-листа.
+        </comment>
+        <addColumn tableName="recipes">
+            <column name="quality_spec_code" type="VARCHAR(50)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="009-04-create-qc-checklists" author="mes">
+        <createTable tableName="qc_checklists">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="batch_id" type="UUID">
+                <constraints nullable="false" unique="true"
+                             foreignKeyName="fk_qc_checklists_batch"
+                             references="batches(id)"/>
+            </column>
+            <column name="quality_spec_id" type="UUID">
+                <constraints foreignKeyName="fk_qc_checklists_spec" references="quality_specs(id)"/>
+            </column>
+            <column name="status" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="image_path" type="VARCHAR(500)"/>
+            <column name="ocr_confidence" type="DOUBLE PRECISION"/>
+            <column name="uploaded_by" type="VARCHAR(255)"/>
+            <column name="uploaded_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="confirmed_by" type="VARCHAR(255)"/>
+            <column name="confirmed_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="reject_reason" type="VARCHAR(1000)"/>
+            <column name="qr_verified" type="BOOLEAN"/>
+            <column name="page_count" type="INTEGER"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="qc_checklists" indexName="idx_qc_checklists_status">
+            <column name="status"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="009-05-create-qc-checklist-items" author="mes">
+        <createTable tableName="qc_checklist_items">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="checklist_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_qc_checklist_items_checklist"
+                             references="qc_checklists(id)"/>
+            </column>
+            <column name="quality_spec_item_id" type="UUID"/>
+            <column name="parameter_name_raw" type="VARCHAR(255)"/>
+            <column name="measured_value" type="DECIMAL(12,3)"/>
+            <column name="ocr_confidence" type="DOUBLE PRECISION"/>
+            <column name="needs_review" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="review_note" type="VARCHAR(500)"/>
+            <column name="within_range" type="BOOLEAN"/>
+            <column name="corrected_by_operator" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="qc_checklist_items" indexName="idx_qc_checklist_items_checklist_id">
+            <column name="checklist_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="009-06-add-quality-checks-range-columns" author="mes">
+        <comment>
+            Document-first QC-поток фиксирует диапазон допуска (min/max из QualitySpecItem,
+            действовавший на момент проверки), а не точное ожидаемое значение, как ручной
+            real-time ввод (expected_value) — обе колонки сосуществуют, используются разными потоками.
+        </comment>
+        <addColumn tableName="quality_checks">
+            <column name="expected_min" type="DECIMAL(12,3)"/>
+            <column name="expected_max" type="DECIMAL(12,3)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

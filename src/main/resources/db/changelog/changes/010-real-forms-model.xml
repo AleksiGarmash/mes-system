@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="010-01-recipe-stages-and-lot-flag" author="mes">
+        <comment>
+            Стадии рецептуры, флаг обязательности партии сырья, нормы перемешивания на строках рецептуры.
+        </comment>
+        <addColumn tableName="recipes">
+            <column name="require_raw_material_lot" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <createTable tableName="recipe_stages">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="recipe_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_recipe_stages_recipe" references="recipes(id)"/>
+            </column>
+            <column name="stage_no" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="planned_qty" type="DECIMAL(12,3)"/>
+        </createTable>
+        <addUniqueConstraint tableName="recipe_stages" columnNames="recipe_id, stage_no"
+                             constraintName="uq_recipe_stages_recipe_stage"/>
+
+        <addColumn tableName="recipe_items">
+            <column name="stage_id" type="UUID">
+                <constraints foreignKeyName="fk_recipe_items_stage" references="recipe_stages(id)"/>
+            </column>
+            <column name="source_stage_no" type="INTEGER"/>
+            <column name="mix_speed_norm" type="VARCHAR(50)"/>
+            <column name="mix_minutes_norm" type="INTEGER"/>
+            <column name="note" type="VARCHAR(500)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="010-02-control-points" author="mes">
+        <comment>Контрольные точки процесса (рецептура) и фактические замеры (чек-лист производства).</comment>
+        <createTable tableName="recipe_control_points">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="recipe_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_control_points_recipe" references="recipes(id)"/>
+            </column>
+            <column name="stage_no" type="INTEGER"/>
+            <column name="kind" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="parameter_code" type="VARCHAR(100)"/>
+            <column name="parameter_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="min_value" type="DECIMAL(12,3)"/>
+            <column name="max_value" type="DECIMAL(12,3)"/>
+            <column name="unit" type="VARCHAR(20)"/>
+            <column name="sequence_no" type="INTEGER"/>
+        </createTable>
+
+        <createTable tableName="process_control_records">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="checklist_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_control_records_checklist"
+                             references="production_checklists(id)"/>
+            </column>
+            <column name="control_point_id" type="UUID"/>
+            <column name="kind" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="stage_no" type="INTEGER"/>
+            <column name="parameter_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expected_min" type="DECIMAL(12,3)"/>
+            <column name="expected_max" type="DECIMAL(12,3)"/>
+            <column name="measured_value" type="DECIMAL(12,3)"/>
+            <column name="within_range" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="process_control_records" indexName="idx_control_records_checklist_id">
+            <column name="checklist_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="010-03-checklist-process-fields" author="mes">
+        <comment>
+            Фактические параметры перемешивания и предупреждения уровня листа; партия сырья в
+            взвешивании становится необязательной (на реальном бланке нет колонки «партия»).
+        </comment>
+        <addColumn tableName="checklist_items">
+            <column name="mix_speed_actual" type="INTEGER"/>
+            <column name="mix_minutes_actual" type="INTEGER"/>
+            <column name="note" type="VARCHAR(500)"/>
+        </addColumn>
+        <addColumn tableName="production_checklists">
+            <column name="review_summary" type="VARCHAR(1000)"/>
+        </addColumn>
+        <addColumn tableName="weighing_records">
+            <column name="stage_no" type="INTEGER"/>
+            <column name="mix_speed_actual" type="INTEGER"/>
+            <column name="mix_minutes_actual" type="INTEGER"/>
+        </addColumn>
+        <dropNotNullConstraint tableName="weighing_records" columnName="raw_material_batch_id" columnDataType="UUID"/>
+    </changeSet>
+
+    <changeSet id="010-04-qualitative-qc-and-decision" author="mes">
+        <comment>
+            Качественные параметры QC («внешний вид»), решение по партии, мероприятия по
+            несоответствиям и вторая подпись на протоколе QC.
+        </comment>
+        <addColumn tableName="quality_spec_items">
+            <column name="parameter_type" type="VARCHAR(20)" defaultValue="NUMERIC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="allowed_values" type="VARCHAR(500)"/>
+        </addColumn>
+        <addColumn tableName="qc_checklist_items">
+            <column name="text_value" type="VARCHAR(255)"/>
+        </addColumn>
+        <addColumn tableName="quality_checks">
+            <column name="expected_text" type="VARCHAR(500)"/>
+            <column name="text_value" type="VARCHAR(255)"/>
+        </addColumn>
+        <addColumn tableName="qc_checklists">
+            <column name="decision_note" type="VARCHAR(500)"/>
+            <column name="nonconformity_actions" type="VARCHAR(1000)"/>
+            <column name="second_signatory" type="VARCHAR(255)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
