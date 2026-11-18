@@ -1,0 +1,13 @@
+{
+  "code": "QC-TF-01",
+  "name": "Контроль качества: Тестформ",
+  "items": [
+    { "parameterCode": "Внешний вид", "parameterName": "Внешний вид", "parameterType": "QUALITATIVE",
+      "allowedValues": "однородная жидкость;однородная жидкость без осадка", "sequenceNo": 1 },
+    { "parameterCode": "Плотность", "parameterName": "Плотность", "minValue": 1.05, "maxValue": 1.15,
+      "unit": "г/см3", "sequenceNo": 2 },
+    { "parameterCode": "pH", "parameterName": "Водородный показатель pH", "minValue": 9.5, "maxValue": 11.0, "sequenceNo": 3 },
+    { "parameterCode": "Сухой остаток", "parameterName": "Содержание сухого остатка, %", "minValue": 20.0, "maxValue": 24.0,
+      "unit": "%", "sequenceNo": 4 }
+  ]
+}
