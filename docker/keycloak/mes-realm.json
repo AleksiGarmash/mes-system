@@ -1,0 +1,103 @@
+{
+  "realm": "mes",
+  "enabled": true,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN"
+      },
+      {
+        "name": "TECHNOLOGIST"
+      },
+      {
+        "name": "PLANNER"
+      },
+      {
+        "name": "OPERATOR"
+      },
+      {
+        "name": "LAB_TECHNICIAN"
+      },
+      {
+        "name": "STOREKEEPER"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mes-app",
+      "publicClient": false,
+      "secret": "mes-app-secret",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    },
+    {
+      "clientId": "mes-frontend",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.mes",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN"
+      ]
+    },
+    {
+      "username": "operator1",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "operator123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "OPERATOR"
+      ]
+    },
+    {
+      "username": "lab1",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "lab123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "LAB_TECHNICIAN"
+      ]
+    }
+  ]
+}
