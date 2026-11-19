@@ -6,6 +6,7 @@ on:
     paths: ["frontend/**", ".github/workflows/frontend.yml"]
   pull_request:
     paths: ["frontend/**", ".github/workflows/frontend.yml"]
+  workflow_dispatch:
 
 jobs:
   check:
@@ -30,7 +31,6 @@ jobs:
         with:
           path: frontend/dist
 
-  # Демо-стенд для портфолио: интерфейс с данными в браузере, без бэкенда и Keycloak
   pages:
     needs: check
     if: github.ref == 'refs/heads/main'
