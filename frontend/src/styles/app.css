@@ -296,3 +296,21 @@ table.grid caption { text-align: left; padding: 0 0 8px; color: var(--ink-2); }
 .nowrap { white-space: nowrap; }
 .stock-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 18px; align-items: start; }
 @media (max-width: 1100px) { .stock-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- протокол качества ---------- */
+.ledger tr.row.s-unmatched { box-shadow: inset 4px 0 0 var(--warn); background: color-mix(in srgb, var(--warn-soft) 55%, transparent); }
+.ledger td.norm { color: var(--ink-2); font-size: var(--step--1); max-width: 22ch; }
+.ledger .text-value { font-weight: 500; }
+.ledger .unit { font-size: var(--step--1); font-weight: 400; color: var(--ink-3); }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.facts dt { color: var(--ink-3); font-size: var(--step--1); padding-top: 2px; }
+.facts dd { margin: 0; }
+.qc-done { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+@media (max-width: 1000px) { .qc-done { grid-template-columns: minmax(0, 1fr); } }
+.norm-values { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.block { display: block; }
+.step > h2 { margin: 0; }
+.step { gap: 10px; }
+.nav-count { margin-left: 8px; }
+.ledger td.norm { min-width: 15ch; }
+table.grid td.norm { min-width: 15ch; }

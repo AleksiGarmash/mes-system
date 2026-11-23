@@ -18,6 +18,12 @@ export function Layout({ roles, username, onLogout }: { roles: Role[]; username:
     queryKey: ['checklists', 'WAITING_CONFIRMATION', 0],
     queryFn: () => api.listChecklists({ status: 'WAITING_CONFIRMATION' }),
   })
+  const labRoles: Role[] = ['LAB_TECHNICIAN', 'ADMIN']
+  const qcWaiting = useQuery({
+    queryKey: ['qc', 'WAITING_CONFIRMATION', 0],
+    queryFn: () => api.listQcChecklists({ status: 'WAITING_CONFIRMATION' }),
+    enabled: labRoles.some((r) => roles.includes(r)),
+  })
 
   const groups: { title: string; items: NavItem[] }[] = [
     {
@@ -30,6 +36,7 @@ export function Layout({ roles, username, onLogout }: { roles: Role[]; username:
     {
       title: 'Качество',
       items: [
+        { to: '/qc', label: 'Протоколы качества', roles: labRoles, count: qcWaiting.data?.totalElements },
         { to: '/batches', label: 'Партии', roles: ['TECHNOLOGIST', 'LAB_TECHNICIAN', 'PLANNER', 'ADMIN'] },
         { to: '/spc', label: 'Стабильность процесса', roles: ['TECHNOLOGIST', 'LAB_TECHNICIAN', 'ADMIN'] },
         { to: '/recall', label: 'Отзыв сырья', roles: ['TECHNOLOGIST', 'ADMIN'] },

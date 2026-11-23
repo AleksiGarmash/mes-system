@@ -1,4 +1,4 @@
-import type { BatchStatus, ChecklistStatus, OrderStatus, QcResult } from '../api/types'
+import type { BatchStatus, ChecklistStatus, OrderStatus, QcChecklistStatus, QcResult } from '../api/types'
 
 type Tone = 'ok' | 'review' | 'bad' | 'neutral' | 'info'
 
@@ -32,4 +32,13 @@ export const qcResult: Record<QcResult, [string, Tone]> = {
   PENDING: ['Не проверено', 'neutral'],
   PASS: ['Соответствует', 'ok'],
   FAIL: ['Не соответствует', 'bad'],
+}
+
+export const qcChecklistStatus: Record<QcChecklistStatus, [string, Tone]> = {
+  NEW: ['Ждёт фото протокола', 'neutral'],
+  UPLOADED: ['Загружен, не распознан', 'info'],
+  OCR_COMPLETE: ['Распознан', 'info'],
+  WAITING_CONFIRMATION: ['Ждёт проверки', 'review'],
+  CONFIRMED: ['Подтверждён', 'ok'],
+  REJECTED: ['Отклонён', 'bad'],
 }

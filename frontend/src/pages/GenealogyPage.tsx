@@ -52,7 +52,15 @@ export function GenealogyPage() {
             <div className="panel">
               <header><h2>Контроль качества</h2></header>
               {g.qualityChecks.length === 0 ? (
-                <div className="empty">Протокол качества ещё не подтверждён.</div>
+                <div className="empty">
+                  Протокол качества ещё не подтверждён.
+                  {g.status === 'PENDING_QC' && (
+                    <>
+                      {' '}
+                      <Link to="/qc">Перейти к протоколам качества</Link>
+                    </>
+                  )}
+                </div>
               ) : (
                 <div className="table-wrap">
                   <table className="grid">
