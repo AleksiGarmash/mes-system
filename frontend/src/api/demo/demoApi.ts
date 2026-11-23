@@ -9,25 +9,31 @@ import type {
   ChecklistSummary,
   ConfirmChecklistRequest,
   Lot,
+  ConfirmQcChecklistRequest,
   Page,
+  QcChecklist,
+  QcChecklistItem,
+  QcChecklistSummary,
   QuarantineResult,
   RecallReport,
   SpcResult,
 } from '../types'
 import { analyze } from '../../lib/spc'
 import { isDosageWithin, isWithinRange } from '../../lib/tolerance'
-import { demoChecklists, demoHistory, demoLots, demoOrders, demoRecipe, demoUsage } from './data'
+import { allowedValues, isAllowedValue } from '../../lib/qcReview'
+import { demoChecklists, demoHistory, demoLots, demoOrders, demoQcChecklists, demoQualitySpec, demoRecipe, demoUsage } from './data'
 
 const PAGE_SIZE = 20
 
-function page<T>(all: T[], pageNo = 0): Page<T> {
-  const start = pageNo * PAGE_SIZE
+function page<T>(all: T[], pageNo = 0, size = PAGE_SIZE): Page<T> {
+  const safeSize = Math.min(Math.max(size, 1), 100)
+  const start = pageNo * safeSize
   return {
-    items: all.slice(start, start + PAGE_SIZE),
+    items: all.slice(start, start + safeSize),
     page: pageNo,
-    size: PAGE_SIZE,
+    size: safeSize,
     totalElements: all.length,
-    totalPages: Math.max(1, Math.ceil(all.length / PAGE_SIZE)),
+    totalPages: Math.max(1, Math.ceil(all.length / safeSize)),
   }
 }
 
@@ -48,6 +54,9 @@ export class DemoApi implements MesApi {
   private usage = demoUsage(this.batches)
   private files = new Map<string, Blob>()
   private batchSeq = 201
+  private spec = demoQualitySpec()
+  private qc = demoQcChecklists()
+  private qcCreated = new Map<string, string>(this.qc.map((c) => [c.id, c.uploadedAt ?? new Date().toISOString()]))
 
   constructor(private readonly latencyMs = 250) {}
 
@@ -242,10 +251,23 @@ export class DemoApi implements MesApi {
         mixSpeedActual: ri.mixSpeedNorm ? 115 : null, mixMinutesActual: ri.mixMinutesNorm,
       }
     })
-    const qualityChecks = idx < 0 ? [] : [
+    const protocol = this.qc.find((c) => c.batchId === batch.id && c.status === 'CONFIRMED')
+    const qualityChecks: BatchGenealogy['qualityChecks'] = protocol
+      ? this.spec.items.map((si) => {
+          const item = protocol.items.find((i) => i.qualitySpecItemId === si.id)!
+          return {
+            parameter: si.parameterName, result: item.withinRange ? 'PASS' : 'FAIL',
+            measuredValue: si.parameterType === 'QUALITATIVE' ? null : item.measuredValue,
+            textValue: si.parameterType === 'QUALITATIVE' ? item.textValue : null,
+            expectedMin: si.minValue, expectedMax: si.maxValue,
+            expectedText: si.parameterType === 'QUALITATIVE' ? si.allowedValues : null,
+          }
+        })
+      : idx < 0 || batch.status === 'PENDING_QC' ? [] : [
       { parameter: 'Внешний вид', result: 'PASS' as const, measuredValue: null, textValue: 'однородная жидкость', expectedMin: null, expectedMax: null, expectedText: 'однородная жидкость;однородная жидкость без осадка' },
-      { parameter: 'Водородный показатель pH', result: (this.history.ph[idx].value > 10.5 ? 'FAIL' : 'PASS') as 'PASS' | 'FAIL', measuredValue: this.history.ph[idx].value, textValue: null, expectedMin: 9.5, expectedMax: 10.5, expectedText: null },
       { parameter: 'Плотность', result: 'PASS' as const, measuredValue: this.history.density[idx].value, textValue: null, expectedMin: 1.05, expectedMax: 1.15, expectedText: null },
+      { parameter: 'Водородный показатель pH', result: (this.history.ph[idx].value > 10.5 ? 'FAIL' : 'PASS') as 'PASS' | 'FAIL', measuredValue: this.history.ph[idx].value, textValue: null, expectedMin: 9.5, expectedMax: 10.5, expectedText: null },
+      { parameter: 'Сухой остаток', result: 'PASS' as const, measuredValue: Math.round((21.4 + (idx % 5) * 0.35) * 10) / 10, textValue: null, expectedMin: 20, expectedMax: 24, expectedText: null },
     ]
     return this.delay({
       batchNo: batch.batchNo, status: batch.status, orderNo: batch.orderNo, recipeCode: this.recipe.code,
@@ -305,8 +327,16 @@ export class DemoApi implements MesApi {
 
   async spc(p: { recipeCode: string; parameter: string; source: string }): Promise<SpcResult> {
     const isPh = p.parameter.toLowerCase().includes('ph')
-    const series = isPh ? this.history.ph : this.history.density
+    const specId = isPh ? 'si-ph' : 'si-density'
     const [lsl, usl] = isPh ? [9.5, 10.5] : [1.05, 1.15]
+    // На карте только результаты контроля: партии, которые ещё ждут протокола, сюда не попадают.
+    const series = (isPh ? this.history.ph : this.history.density).flatMap((point) => {
+      const batch = this.batches.find((b) => b.batchNo === point.label)
+      const protocol = batch && this.qc.find((c) => c.batchId === batch.id && c.status === 'CONFIRMED')
+      const measured = protocol?.items.find((i) => i.qualitySpecItemId === specId)?.measuredValue
+      if (measured != null) return [{ ...point, value: measured }]
+      return batch?.status === 'PENDING_QC' ? [] : [point]
+    })
     return this.delay({
       recipeCode: p.recipeCode,
       parameter: p.parameter,
@@ -316,5 +346,167 @@ export class DemoApi implements MesApi {
       points: series.map((s) => ({ ...s, outOfSpec: s.value < lsl || s.value > usl })),
       report: analyze(series.map((s) => s.value), lsl, usl),
     })
+  }
+
+  // ---------- протоколы контроля качества ----------
+
+  private findQc(id: string): QcChecklist {
+    const c = this.qc.find((x) => x.id === id)
+    if (!c) throw notFound('Протокол QC')
+    return c
+  }
+
+  private specItem(id: string | null) {
+    return id ? this.spec.items.find((si) => si.id === id) : undefined
+  }
+
+  /** Как на сервере: качественный параметр сравнивается со списком значений, числовой — с диапазоном. */
+  private evaluate(item: QcChecklistItem) {
+    const si = this.specItem(item.qualitySpecItemId)
+    if (!si) return
+    if (si.parameterType === 'QUALITATIVE') {
+      if (item.textValue && item.textValue.trim()) item.withinRange = isAllowedValue(item.textValue, si)
+    } else if (item.measuredValue !== null) {
+      item.withinRange = isWithinRange(item.measuredValue, si.minValue, si.maxValue)
+    }
+  }
+
+  async listQcChecklists(p: { status?: string; page?: number; size?: number }) {
+    const summaries: QcChecklistSummary[] = this.qc
+      .filter((c) => !p.status || c.status === p.status)
+      .map((c) => ({
+        id: c.id, batchId: c.batchId, batchNo: c.batchNo, status: c.status, uploadedAt: c.uploadedAt,
+        itemCount: c.items.length, needsReviewCount: c.items.filter((i) => i.needsReview).length,
+        createdAt: this.qcCreated.get(c.id) ?? new Date().toISOString(),
+      }))
+    return this.delay(page(summaries, p.page, p.size))
+  }
+
+  async getQcChecklist(id: string) {
+    return this.delay(this.findQc(id))
+  }
+
+  async createQcChecklist(batchId: string) {
+    const batch = this.batches.find((b) => b.id === batchId)
+    if (!batch) throw notFound('Партия')
+    const existing = this.qc.find((c) => c.batchId === batchId)
+    if (existing) throw new ApiError(409, `Протокол QC для партии ${batch.batchNo} уже существует: ${existing.id}`)
+    const checklist: QcChecklist = {
+      id: `qc-${batch.batchNo}`, batchId, batchNo: batch.batchNo, qualitySpecId: this.spec.id, status: 'NEW',
+      imagePath: null, ocrConfidence: null, uploadedAt: null, qrVerified: null, pageCount: null, rejectReason: null,
+      confirmedBy: null, confirmedAt: null, decisionNote: null, nonconformityActions: null, secondSignatory: null, items: [],
+    }
+    this.qc.unshift(checklist)
+    this.qcCreated.set(checklist.id, new Date().toISOString())
+    return this.delay(checklist)
+  }
+
+  async qcChecklistPdf(batchId: string) {
+    if (!this.batches.some((b) => b.id === batchId)) throw notFound('Партия')
+    return (await fetch(new URL('demo/qc-blank.svg', document.baseURI))).blob()
+  }
+
+  async qcChecklistFile(id: string) {
+    const stored = this.files.get(id)
+    if (stored) return stored
+    if (id === 'qc-200') return (await fetch(new URL('demo/qc-protocol-200.svg', document.baseURI))).blob()
+    throw notFound('Файл')
+  }
+
+  async uploadQcChecklist(id: string, file: File) {
+    const c = this.findQc(id)
+    if (!['NEW', 'UPLOADED', 'REJECTED'].includes(c.status)) {
+      throw new ApiError(409, `Загрузка файла недоступна для протокола в статусе ${c.status}: подтверждённый документ нельзя заменить.`)
+    }
+    this.files.set(id, file)
+    Object.assign(c, {
+      status: 'UPLOADED', imagePath: `qc-checklists/${id}/${file.name}`, uploadedAt: new Date().toISOString(),
+      pageCount: 1, items: [], qrVerified: null, rejectReason: null, ocrConfidence: null,
+    })
+    return this.delay(c)
+  }
+
+  /** Имитация распознавания: значения по спецификации, одно неуверенное и одно не найденное на листе. */
+  async recognizeQcChecklist(id: string) {
+    const c = this.findQc(id)
+    if (c.status !== 'UPLOADED') throw new ApiError(409, `Распознавание доступно только для протокола в статусе UPLOADED, текущий: ${c.status}`)
+    const phHistory = this.history.ph.find((p) => p.label === c.batchNo)?.value ?? 10.31
+    const recognized: Record<string, { value: number | null; text: string | null; confidence: number }> = {
+      'si-appearance': { value: null, text: allowedValues(this.specItem('si-appearance'))[1] ?? null, confidence: 0.95 },
+      'si-density': { value: 1.118, text: null, confidence: 0.96 },
+      'si-ph': { value: phHistory, text: null, confidence: 0.72 },
+      'si-dry': { value: null, text: null, confidence: 0 },
+    }
+    c.items = this.spec.items.map((si, i): QcChecklistItem => {
+      const r = recognized[si.id]
+      const item: QcChecklistItem = {
+        id: `${id}-qi-${i}`, qualitySpecItemId: si.id, parameterNameRaw: si.parameterCode ?? si.parameterName,
+        measuredValue: r.value, textValue: r.text, confidence: r.confidence, needsReview: false, reviewNote: null,
+        withinRange: null, correctedByOperator: false,
+      }
+      this.evaluate(item)
+      const notes: string[] = []
+      if (r.value === null && !r.text) notes.push('Параметр не найден на листе — внесите значение вручную.')
+      else if (r.confidence < 0.9) notes.push(`Низкая уверенность распознавания (${Math.round(r.confidence * 100)}%).`)
+      if (item.withinRange === false) notes.push('Значение вне допуска QC-спецификации.')
+      item.needsReview = notes.length > 0
+      item.reviewNote = notes.join(' ') || null
+      return item
+    })
+    c.qrVerified = true
+    c.ocrConfidence = 0.81
+    c.status = 'WAITING_CONFIRMATION'
+    return this.delay(c)
+  }
+
+  async confirmQcChecklist(id: string, request: ConfirmQcChecklistRequest) {
+    const c = this.findQc(id)
+    if (c.status !== 'WAITING_CONFIRMATION') {
+      throw new ApiError(409, `Подтверждение доступно только из статуса WAITING_CONFIRMATION, текущий: ${c.status}`)
+    }
+    for (const corr of request.corrections) {
+      const item = c.items.find((i) => i.id === corr.checklistItemId)
+      if (!item) throw notFound('Строка протокола QC')
+      if (corr.qualitySpecItemId != null) item.qualitySpecItemId = corr.qualitySpecItemId
+      if (corr.measuredValue != null) item.measuredValue = corr.measuredValue
+      if (corr.textValue != null) item.textValue = corr.textValue
+      this.evaluate(item)
+      item.correctedByOperator = true
+      item.needsReview = false
+    }
+    if (c.items.length === 0) throw new ApiError(409, 'В протоколе нет ни одной строки — подтверждать нечего. Проверьте распознавание.')
+    const unmatched = c.items.filter((i) => !this.specItem(i.qualitySpecItemId)).map((i) => i.parameterNameRaw ?? 'строка без названия')
+    if (unmatched.length) {
+      throw new ApiError(409, `Строки не сопоставлены с параметрами спецификации: ${unmatched.join(', ')}. Выберите параметр для каждой строки.`)
+    }
+    const ids = c.items.map((i) => i.qualitySpecItemId)
+    const duplicated = [...new Set(ids.filter((x, i) => ids.indexOf(x) !== i))].map((x) => this.specItem(x)!.parameterName)
+    if (duplicated.length) {
+      throw new ApiError(409, `Параметр указан в протоколе несколько раз: ${duplicated.join(', ')}. У каждого параметра должна быть одна строка.`)
+    }
+    const incomplete = c.items.some((i) =>
+      this.specItem(i.qualitySpecItemId)!.parameterType === 'QUALITATIVE' ? !i.textValue?.trim() : i.measuredValue === null)
+    if (incomplete) throw new ApiError(409, 'Есть незаполненные строки протокола — заполните значения всех параметров перед подтверждением.')
+
+    Object.assign(c, {
+      status: 'CONFIRMED', confirmedBy: request.labTechnician, confirmedAt: new Date().toISOString(),
+      decisionNote: request.decisionNote, nonconformityActions: request.nonconformityActions, secondSignatory: request.secondSignatory,
+    })
+    const batch = this.batches.find((b) => b.id === c.batchId)
+    if (batch) batch.status = c.items.some((i) => i.withinRange !== true) ? 'REJECTED' : 'RELEASED'
+    return this.delay(c)
+  }
+
+  async rejectQcChecklist(id: string, reason: string) {
+    const c = this.findQc(id)
+    if (c.status === 'CONFIRMED') throw new ApiError(409, 'Подтверждённый протокол нельзя отклонить.')
+    c.status = 'REJECTED'
+    c.rejectReason = reason
+    return this.delay(c)
+  }
+
+  async getQualitySpec(id: string) {
+    if (id !== this.spec.id) throw notFound('Спецификация качества')
+    return this.delay(this.spec)
   }
 }

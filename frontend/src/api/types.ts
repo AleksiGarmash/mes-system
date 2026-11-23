@@ -167,6 +167,89 @@ export interface ConfirmChecklistRequest {
   controlValues: { controlPointId: Uuid; measuredValue: number }[]
 }
 
+export type QcParameterType = 'NUMERIC' | 'QUALITATIVE'
+
+export interface QualitySpecItem {
+  id: Uuid
+  parameterCode: string | null
+  parameterName: string
+  minValue: number | null
+  maxValue: number | null
+  unit: string | null
+  sequenceNo: number | null
+  parameterType: QcParameterType
+  /** Допустимые значения качественного параметра через «;». */
+  allowedValues: string | null
+}
+
+export interface QualitySpec {
+  id: Uuid
+  code: string
+  name: string
+  version: number
+  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
+  items: QualitySpecItem[]
+}
+
+export interface QcChecklistItem {
+  id: Uuid
+  parameterNameRaw: string | null
+  qualitySpecItemId: Uuid | null
+  measuredValue: number | null
+  textValue: string | null
+  confidence: number | null
+  needsReview: boolean
+  reviewNote: string | null
+  withinRange: boolean | null
+  correctedByOperator: boolean
+}
+
+export interface QcChecklist {
+  id: Uuid
+  batchId: Uuid
+  batchNo: string
+  qualitySpecId: Uuid | null
+  status: QcChecklistStatus
+  imagePath: string | null
+  ocrConfidence: number | null
+  uploadedAt: string | null
+  qrVerified: boolean | null
+  pageCount: number | null
+  rejectReason: string | null
+  confirmedBy: string | null
+  confirmedAt: string | null
+  decisionNote: string | null
+  nonconformityActions: string | null
+  secondSignatory: string | null
+  items: QcChecklistItem[]
+}
+
+export interface QcChecklistSummary {
+  id: Uuid
+  batchId: Uuid
+  batchNo: string
+  status: QcChecklistStatus
+  uploadedAt: string | null
+  itemCount: number
+  needsReviewCount: number
+  createdAt: string
+}
+
+export interface QcCorrection {
+  checklistItemId: Uuid
+  qualitySpecItemId?: Uuid | null
+  measuredValue?: number | null
+  textValue?: string | null
+}
+
+export interface ConfirmQcChecklistRequest {
+  labTechnician: string
+  corrections: QcCorrection[]
+  decisionNote: string | null
+  nonconformityActions: string | null
+  secondSignatory: string | null
+}
+
 export interface Batch {
   id: Uuid
   batchNo: string

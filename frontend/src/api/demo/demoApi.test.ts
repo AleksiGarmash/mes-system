@@ -79,7 +79,51 @@ describe('демо-API ведёт себя как сервер', () => {
   it('SPC по истории показывает сдвиг среднего', async () => {
     const api = new DemoApi(0)
     const spc = await api.spc({ recipeCode: 'TF-01', parameter: 'Водородный показатель pH', source: 'QC' })
-    expect(spc.points).toHaveLength(30)
+    // 30 партий в истории, две последние ещё ждут протокола качества — на карте их нет
+    expect(spc.points).toHaveLength(28)
     expect(spc.report.signals.length).toBeGreaterThan(0)
+  })
+
+  it('протокол качества: исправление ошибки OCR выпускает партию и добавляет точку на карту', async () => {
+    const api = new DemoApi(0)
+    const qc = await api.getQcChecklist('qc-200')
+    const done = await api.confirmQcChecklist('qc-200', {
+      labTechnician: 'Тест',
+      corrections: [
+        { checklistItemId: 'qi-2' },
+        { checklistItemId: 'qi-3', measuredValue: 10.38 },
+        { checklistItemId: 'qi-4', measuredValue: 22.4 },
+      ],
+      decisionNote: null, nonconformityActions: null, secondSignatory: null,
+    })
+    expect(qc.status).toBe('WAITING_CONFIRMATION')
+    expect(done.status).toBe('CONFIRMED')
+    expect((await api.genealogy('B-2026-000200')).status).toBe('RELEASED')
+    const spc = await api.spc({ recipeCode: 'TF-01', parameter: 'Водородный показатель pH', source: 'QC' })
+    expect(spc.points.at(-1)).toMatchObject({ label: 'B-2026-000200', value: 10.38 })
+  })
+
+  it('протокол качества: несоответствие бракует партию, пустое значение не даёт подтвердить', async () => {
+    const api = new DemoApi(0)
+    await expect(api.confirmQcChecklist('qc-200', {
+      labTechnician: 'Тест', corrections: [], decisionNote: null, nonconformityActions: null, secondSignatory: null,
+    })).rejects.toMatchObject({ status: 409 })
+    await api.confirmQcChecklist('qc-200', {
+      labTechnician: 'Тест', corrections: [{ checklistItemId: 'qi-4', measuredValue: 22.4 }],
+      decisionNote: null, nonconformityActions: 'изолировать', secondSignatory: null,
+    })
+    expect((await api.genealogy('B-2026-000200')).status).toBe('REJECTED')
+  })
+
+  it('протокол качества: новая партия проходит путь от создания протокола до распознавания', async () => {
+    const api = new DemoApi(0)
+    const created = await api.createQcChecklist('batch-28')
+    await expect(api.createQcChecklist('batch-28')).rejects.toMatchObject({ status: 409 })
+    await api.uploadQcChecklist(created.id, file)
+    const recognized = await api.recognizeQcChecklist(created.id)
+    expect(recognized.status).toBe('WAITING_CONFIRMATION')
+    expect(recognized.items).toHaveLength(4)
+    expect(recognized.items.filter((i) => i.needsReview)).toHaveLength(2)
+    expect((await api.listQcChecklists({ status: 'WAITING_CONFIRMATION' })).totalElements).toBe(2)
   })
 })

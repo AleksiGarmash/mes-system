@@ -11,6 +11,10 @@ import type {
   Me,
   Order,
   Page,
+  QcChecklist,
+  QcChecklistSummary,
+  ConfirmQcChecklistRequest,
+  QualitySpec,
   QuarantineResult,
   RecallReport,
   Recipe,
@@ -118,6 +122,39 @@ export class HttpApi implements MesApi {
   listBatches(p: Parameters<MesApi['listBatches']>[0]) {
     return this.json<Page<Batch>>(`/api/batches${query({ status: p.status, page: p.page })}`)
   }
+  listQcChecklists(p: Parameters<MesApi['listQcChecklists']>[0]) {
+    return this.json<Page<QcChecklistSummary>>(`/api/qc-checklists${query({ status: p.status, page: p.page, size: p.size })}`)
+  }
+  getQcChecklist(id: string) {
+    return this.json<QcChecklist>(`/api/qc-checklists/${id}`)
+  }
+  createQcChecklist(batchId: string) {
+    return this.post<QcChecklist>('/api/qc-checklists', { batchId })
+  }
+  qcChecklistPdf(batchId: string) {
+    return this.blob(`/api/batches/${batchId}/qc-checklist-pdf`)
+  }
+  qcChecklistFile(id: string) {
+    return this.blob(`/api/qc-checklists/${id}/file`)
+  }
+  uploadQcChecklist(id: string, file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    return this.json<QcChecklist>(`/api/qc-checklists/${id}/upload`, { method: 'POST', body: form })
+  }
+  recognizeQcChecklist(id: string) {
+    return this.post<QcChecklist>(`/api/qc-checklists/${id}/recognize`)
+  }
+  confirmQcChecklist(id: string, request: ConfirmQcChecklistRequest) {
+    return this.post<QcChecklist>(`/api/qc-checklists/${id}/confirm`, request)
+  }
+  rejectQcChecklist(id: string, reason: string) {
+    return this.post<QcChecklist>(`/api/qc-checklists/${id}/reject`, { reason })
+  }
+  getQualitySpec(id: string) {
+    return this.json<QualitySpec>(`/api/quality-specs/${id}`)
+  }
+
   genealogy(batchNo: string) {
     return this.json<BatchGenealogy>(`/api/traceability/batches/${encodeURIComponent(batchNo)}`)
   }

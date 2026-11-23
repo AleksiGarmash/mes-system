@@ -12,6 +12,11 @@ import type {
   Order,
   OrderStatus,
   Page,
+  QcChecklist,
+  QcChecklistStatus,
+  QcChecklistSummary,
+  ConfirmQcChecklistRequest,
+  QualitySpec,
   QuarantineResult,
   RecallReport,
   Recipe,
@@ -45,6 +50,19 @@ export interface MesApi {
   rejectChecklist(id: Uuid, reason: string): Promise<Checklist>
 
   listBatches(params: { status?: BatchStatus; page?: number }): Promise<Page<Batch>>
+
+  /** Протоколы контроля качества: одна партия — один протокол. size до 100. */
+  listQcChecklists(params: { status?: QcChecklistStatus; page?: number; size?: number }): Promise<Page<QcChecklistSummary>>
+  getQcChecklist(id: Uuid): Promise<QcChecklist>
+  createQcChecklist(batchId: Uuid): Promise<QcChecklist>
+  /** Печатный бланк протокола с QR-кодом партии. */
+  qcChecklistPdf(batchId: Uuid): Promise<Blob>
+  qcChecklistFile(id: Uuid): Promise<Blob>
+  uploadQcChecklist(id: Uuid, file: File): Promise<QcChecklist>
+  recognizeQcChecklist(id: Uuid): Promise<QcChecklist>
+  confirmQcChecklist(id: Uuid, request: ConfirmQcChecklistRequest): Promise<QcChecklist>
+  rejectQcChecklist(id: Uuid, reason: string): Promise<QcChecklist>
+  getQualitySpec(id: Uuid): Promise<QualitySpec>
   genealogy(batchNo: string): Promise<BatchGenealogy>
   recallReport(lotNo: string): Promise<RecallReport>
   quarantineLot(lotNo: string, reason: string): Promise<QuarantineResult>

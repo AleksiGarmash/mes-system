@@ -1,4 +1,4 @@
-import type { Batch, Checklist, Lot, Order, Recipe } from '../types'
+import type { Batch, Checklist, Lot, Order, QcChecklist, QualitySpec, Recipe } from '../types'
 
 /**
  * Демо-данные. Продукт вымышленный («Тестформ»), чтобы в публичный репозиторий не попала
@@ -136,7 +136,8 @@ export function demoHistory() {
       productionOrderId: `order-h${i}`,
       orderNo: String(214 + i),
       qty: 1000 + Math.round(noise(i, 3) * 8),
-      status: i === 29 ? 'PENDING_QC' : rejected ? 'REJECTED' : 'RELEASED',
+      // две последние партии ещё ждут контроля качества: у одной протокол уже распознан, у другой его нет
+      status: i >= 28 ? 'PENDING_QC' : rejected ? 'REJECTED' : 'RELEASED',
       operator: i % 2 === 0 ? 'Иванов И. И.' : 'Петров П. С.',
       producedAt: at(daysAgo),
     })
@@ -150,4 +151,64 @@ export function demoHistory() {
 export function demoUsage(batches: Batch[]) {
   // лот Компонента А RM-2026-0390 использован в последних шести партиях — его можно «отозвать» в демо
   return batches.slice(0, 6).map((b) => ({ batchNo: b.batchNo, lotNo: 'RM-2026-0390', qty: 90 + (b.qty ?? 1000) % 3 }))
+}
+
+/** Спецификация качества «Тестформ»: те же параметры, что в родословной партий и на контрольной карте. */
+export function demoQualitySpec(): QualitySpec {
+  return {
+    id: 'spec-qc-tf01',
+    code: 'QC-TF-01',
+    name: 'Контроль качества: Тестформ',
+    version: 1,
+    status: 'ACTIVE',
+    items: [
+      { id: 'si-appearance', parameterCode: 'Внешний вид', parameterName: 'Внешний вид', minValue: null, maxValue: null, unit: null,
+        sequenceNo: 1, parameterType: 'QUALITATIVE', allowedValues: 'однородная жидкость;однородная жидкость без осадка' },
+      { id: 'si-density', parameterCode: 'Плотность', parameterName: 'Плотность', minValue: 1.05, maxValue: 1.15, unit: 'г/см³',
+        sequenceNo: 2, parameterType: 'NUMERIC', allowedValues: null },
+      { id: 'si-ph', parameterCode: 'pH', parameterName: 'Водородный показатель pH', minValue: 9.5, maxValue: 10.5, unit: null,
+        sequenceNo: 3, parameterType: 'NUMERIC', allowedValues: null },
+      { id: 'si-dry', parameterCode: 'Сухой остаток', parameterName: 'Сухой остаток', minValue: 20, maxValue: 24, unit: '%',
+        sequenceNo: 4, parameterType: 'NUMERIC', allowedValues: null },
+    ],
+  }
+}
+
+/**
+ * Протокол партии B-2026-000200 после распознавания. На бланке pH записан как 10,38,
+ * а OCR прочитал 10,88 — значение «вне нормы»; лаборант сверяет с фото и исправляет.
+ * Плотность распознана неуверенно, сухой остаток OCR не нашёл.
+ */
+export function demoQcChecklists(): QcChecklist[] {
+  const row = (id: string, specId: string, name: string, value: number | null, text: string | null, confidence: number,
+    needsReview: boolean, withinRange: boolean | null, reviewNote: string | null) => ({
+    id, qualitySpecItemId: specId, parameterNameRaw: name, measuredValue: value, textValue: text, confidence,
+    needsReview, withinRange, reviewNote, correctedByOperator: false,
+  })
+  return [
+    {
+      id: 'qc-200',
+      batchId: 'batch-29',
+      batchNo: 'B-2026-000200',
+      qualitySpecId: 'spec-qc-tf01',
+      status: 'WAITING_CONFIRMATION',
+      imagePath: 'qc-checklists/qc-200/demo.svg',
+      ocrConfidence: 0.84,
+      uploadedAt: at(0.02),
+      qrVerified: true,
+      pageCount: 1,
+      rejectReason: null,
+      confirmedBy: null,
+      confirmedAt: null,
+      decisionNote: null,
+      nonconformityActions: null,
+      secondSignatory: null,
+      items: [
+        row('qi-1', 'si-appearance', 'Внешний вид', null, 'однородная жидкость', 0.93, false, true, null),
+        row('qi-2', 'si-density', 'Плотность', 1.121, null, 0.74, true, true, 'Низкая уверенность распознавания (74%).'),
+        row('qi-3', 'si-ph', 'pH', 10.88, null, 0.91, true, false, 'Значение вне допуска QC-спецификации.'),
+        row('qi-4', 'si-dry', 'Сухой остаток', null, null, 0, true, null, 'Параметр не найден на листе — внесите значение вручную.'),
+      ],
+    },
+  ]
 }
