@@ -322,4 +322,86 @@ class QcChecklistServiceTest {
         assertThrows(com.mes.exception.InvalidStateTransitionException.class,
                 () -> qcChecklistService.reject(checklist.getId(), "ошибка"));
     }
+
+    // ---------- сопоставление строк со спецификацией ----------
+
+    private QcChecklistItem waitingRow(UUID specItemId, String name, BigDecimal value, Boolean withinRange) {
+        checklist.setStatus(QcChecklistStatus.WAITING_CONFIRMATION);
+        QcChecklistItem item = QcChecklistItem.builder()
+                .id(UUID.randomUUID())
+                .checklist(checklist)
+                .qualitySpecItemId(specItemId)
+                .parameterNameRaw(name)
+                .measuredValue(value)
+                .withinRange(withinRange)
+                .needsReview(specItemId == null)
+                .build();
+        checklist.getItems().add(item);
+        return item;
+    }
+
+    @Test
+    void confirm_rowNotMappedToSpec_isRejected_andNothingIsRecorded() {
+        waitingRow(null, "Неизвестный параметр", BigDecimal.valueOf(4.0), null);
+
+        var error = assertThrows(com.mes.exception.InvalidStateTransitionException.class, () ->
+                qcChecklistService.confirm(checklist.getId(),
+                        new com.mes.dto.request.ConfirmQcChecklistRequest("Петрова А.А.", null)));
+
+        assertTrue(error.getMessage().contains("Неизвестный параметр"));
+        assertEquals(QcChecklistStatus.WAITING_CONFIRMATION, checklist.getStatus());
+        verify(qualityCheckRepository, never()).save(any());
+        verify(qualityControlService, never()).updateBatchStatus(any());
+    }
+
+    @Test
+    void confirm_rowMappedByCorrection_isAccepted() {
+        UUID moisture = spec.getItems().get(0).getId();
+        QcChecklistItem row = waitingRow(null, "Влажн.", BigDecimal.valueOf(4.0), null);
+
+        qcChecklistService.confirm(checklist.getId(), new com.mes.dto.request.ConfirmQcChecklistRequest(
+                "Петрова А.А.", List.of(new com.mes.dto.request.ConfirmQcChecklistItemRequest(row.getId(), moisture, null))));
+
+        assertEquals(QcChecklistStatus.CONFIRMED, checklist.getStatus());
+        assertTrue(row.getWithinRange());
+        org.mockito.ArgumentCaptor<QualityCheck> captor = org.mockito.ArgumentCaptor.forClass(QualityCheck.class);
+        verify(qualityCheckRepository).save(captor.capture());
+        assertEquals(com.mes.domain.enums.QcResult.PASS, captor.getValue().getResult());
+    }
+
+    @Test
+    void confirm_sameParameterTwice_isRejected() {
+        UUID moisture = spec.getItems().get(0).getId();
+        waitingRow(moisture, "Влажность", BigDecimal.valueOf(4.0), true);
+        waitingRow(moisture, "Влажность", BigDecimal.valueOf(5.0), false);
+
+        assertThrows(com.mes.exception.InvalidStateTransitionException.class, () ->
+                qcChecklistService.confirm(checklist.getId(),
+                        new com.mes.dto.request.ConfirmQcChecklistRequest("Петрова А.А.", null)));
+        verify(qualityCheckRepository, never()).save(any());
+    }
+
+    @Test
+    void confirm_protocolWithoutSpec_isRejected() {
+        checklist.setQualitySpec(null);
+        waitingRow(null, "Влажность", BigDecimal.valueOf(4.0), null);
+
+        var error = assertThrows(com.mes.exception.InvalidStateTransitionException.class, () ->
+                qcChecklistService.confirm(checklist.getId(),
+                        new com.mes.dto.request.ConfirmQcChecklistRequest("Петрова А.А.", null)));
+        assertTrue(error.getMessage().contains("нет активной QC-спецификации"));
+    }
+
+    @Test
+    void upload_protocolCreatedWithoutSpec_picksUpSpecActivatedLater() {
+        checklist.setQualitySpec(null);
+        checklist.setStatus(QcChecklistStatus.NEW);
+        when(qualitySpecRepository.findByCodeAndStatus("QC-SM17", QualitySpecStatus.ACTIVE)).thenReturn(Optional.of(spec));
+        when(storageService.store(any(), any(), any())).thenReturn("checklists/qc-new.png");
+
+        qcChecklistService.upload(checklist.getId(), new byte[]{9, 9}, "image/png", "Петрова");
+
+        assertSame(spec, checklist.getQualitySpec());
+        assertEquals(QcChecklistStatus.UPLOADED, checklist.getStatus());
+    }
 }

@@ -96,19 +96,7 @@ public class QcChecklistService {
                     "Протокол QC для партии " + batch.getBatchNo() + " уже существует: " + existing.getId());
         });
 
-        String specCode = batch.getProductionOrder().getRecipe().getQualitySpecCode();
-        QualitySpec spec = null;
-        if (specCode != null) {
-            spec = qualitySpecRepository.findByCodeAndStatus(specCode, com.mes.domain.enums.QualitySpecStatus.ACTIVE)
-                    .orElse(null);
-            if (spec == null) {
-                log.warn("Для рецептуры {} указана QC-спецификация {}, но активной версии не найдено.",
-                        batch.getProductionOrder().getRecipe().getCode(), specCode);
-            }
-        } else {
-            log.warn("Для рецептуры {} QC-спецификация не задана — протокол будет без эталонных параметров.",
-                    batch.getProductionOrder().getRecipe().getCode());
-        }
+        QualitySpec spec = resolveActiveSpec(batch);
 
         QcChecklist checklist = QcChecklist.builder()
                 .batch(batch)
@@ -117,6 +105,27 @@ public class QcChecklistService {
                 .build();
 
         return checklistRepository.save(checklist);
+    }
+
+    /**
+     * Активная QC-спецификация для рецептуры партии или {@code null}, если её нет.
+     * Без спецификации протокол можно распечатать и загрузить, но не подтвердить: результаты не с чем сравнивать.
+     */
+    private QualitySpec resolveActiveSpec(Batch batch) {
+        String specCode = batch.getProductionOrder().getRecipe().getQualitySpecCode();
+        if (specCode == null) {
+            log.warn("Для рецептуры {} QC-спецификация не задана — протокол будет без эталонных параметров.",
+                    batch.getProductionOrder().getRecipe().getCode());
+            return null;
+        }
+        QualitySpec spec = qualitySpecRepository
+                .findByCodeAndStatus(specCode, com.mes.domain.enums.QualitySpecStatus.ACTIVE)
+                .orElse(null);
+        if (spec == null) {
+            log.warn("Для рецептуры {} указана QC-спецификация {}, но активной версии не найдено.",
+                    batch.getProductionOrder().getRecipe().getCode(), specCode);
+        }
+        return spec;
     }
 
     /** Шаг 2: лаборант загружает фото/скан заполненного протокола (изображение или PDF). */
@@ -142,6 +151,11 @@ public class QcChecklistService {
 
         int pageCount = pdfPageRasterizer.countPages(fileBytes, contentType);
         String imagePath = storageService.store(checklistId, fileBytes, contentType);
+
+        // Спецификацию могли активировать уже после создания протокола: подхватываем её при новой загрузке.
+        if (checklist.getQualitySpec() == null) {
+            checklist.setQualitySpec(resolveActiveSpec(checklist.getBatch()));
+        }
 
         checklist.getItems().clear();
         checklist.setQrVerified(null);
@@ -399,6 +413,8 @@ public class QcChecklistService {
                     "В протоколе нет ни одной строки — подтверждать нечего. Проверьте распознавание.");
         }
 
+        requireMappedToSpec(checklist);
+
         boolean anyStillIncomplete = checklist.getItems().stream().anyMatch(i -> {
             QualitySpecItem specItem = findSpecItem(checklist, i.getQualitySpecItemId());
             return isQualitative(specItem)
@@ -423,6 +439,40 @@ public class QcChecklistService {
         createQualityChecksAndUpdateBatch(checklist);
 
         return checklist;
+    }
+
+    /**
+     * Каждая строка должна ссылаться на свой параметр спецификации. Иначе результат
+     * не с чем будет сравнить: несопоставленная строка раньше становилась FAIL и браковала партию,
+     * а две строки на один параметр давали две противоречивые записи контроля.
+     */
+    private void requireMappedToSpec(QcChecklist checklist) {
+        if (checklist.getQualitySpec() == null) {
+            throw new InvalidStateTransitionException(
+                    "Для рецептуры партии нет активной QC-спецификации — результаты не с чем сравнить. "
+                            + "Активируйте спецификацию и загрузите протокол заново.");
+        }
+        List<String> unmatched = new ArrayList<>();
+        Set<UUID> seen = new HashSet<>();
+        List<String> duplicated = new ArrayList<>();
+        for (QcChecklistItem item : checklist.getItems()) {
+            QualitySpecItem specItem = findSpecItem(checklist, item.getQualitySpecItemId());
+            if (specItem == null) {
+                unmatched.add(item.getParameterNameRaw() != null ? item.getParameterNameRaw() : "строка без названия");
+            } else if (!seen.add(specItem.getId())) {
+                duplicated.add(specItem.getParameterName());
+            }
+        }
+        if (!unmatched.isEmpty()) {
+            throw new InvalidStateTransitionException(
+                    "Строки не сопоставлены с параметрами спецификации: " + String.join(", ", unmatched)
+                            + ". Выберите параметр для каждой строки.");
+        }
+        if (!duplicated.isEmpty()) {
+            throw new InvalidStateTransitionException(
+                    "Параметр указан в протоколе несколько раз: " + String.join(", ", duplicated)
+                            + ". У каждого параметра должна быть одна строка.");
+        }
     }
 
     /** Ищет строку спецификации сначала в уже загруженной спецификации протокола, затем в БД. */
