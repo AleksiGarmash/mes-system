@@ -66,6 +66,19 @@ describe('демо-API ведёт себя как сервер', () => {
     expect(a.complete).toBe(true)
   })
 
+  it('FEFO в демо не зависит от того, в какой день запущен тест', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      for (const now of ['2026-11-23T10:00:00Z', '2027-06-01T03:00:00Z', '2030-01-01T23:30:00Z']) {
+        vi.setSystemTime(new Date(now))
+        const a = await new DemoApi(0).allocate('22222222-2222-4222-8222-222222222222', 200)
+        expect(a.picks.map((p) => p.lotNo), now).toEqual(['RM-2026-0390', 'RM-2026-0455'])
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('отзыв лота: карантин только для подходящих партий', async () => {
     const api = new DemoApi(0)
     const report = await api.recallReport('RM-2026-0390')

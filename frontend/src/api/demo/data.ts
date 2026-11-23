@@ -42,9 +42,19 @@ export function demoRecipe(): Recipe {
 }
 
 const DAY = 24 * 3600 * 1000
-const BASE_TIME = Date.parse('2026-11-09T08:00:00Z')
-const at = (daysAgo: number) => new Date(BASE_TIME - daysAgo * DAY).toISOString()
-const isoDate = (daysFromBase: number) => new Date(BASE_TIME + daysFromBase * DAY).toISOString().slice(0, 10)
+/**
+ * Точка отсчёта демо — вчера, 08:00 UTC, а не фиксированная дата. Иначе демо «стареет»:
+ * лот с запасом срока через пару недель становится просроченным, и меняется поведение FEFO
+ * (так и упал тест в CI через 12 дней после написания). Считается при каждом вызове,
+ * чтобы тесты могли подменить текущее время.
+ */
+function baseTime(): number {
+  const d = new Date()
+  d.setUTCHours(8, 0, 0, 0)
+  return d.getTime() - DAY
+}
+const at = (daysAgo: number) => new Date(baseTime() - daysAgo * DAY).toISOString()
+const isoDate = (daysFromBase: number) => new Date(baseTime() + daysFromBase * DAY).toISOString().slice(0, 10)
 
 export function demoLots(): Lot[] {
   return [
